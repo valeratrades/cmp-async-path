@@ -1,4 +1,3 @@
-local cmp = require("cmp")
 local IS_WIN = vim.uv.os_uname().sysname == "Windows_NT"
 local NAME_REGEX = "\\%([^/\\\\:\\*?<>'\"`\\|]\\)"
 local PATH_REGEX ---@type vim.regex
@@ -79,7 +78,7 @@ end
 --- get documentation in separate thread
 ---@param completion_item lsp.CompletionItem
 ---@param callback fun(completion_item: lsp.CompletionItem|nil)
-function source:resolve(completion_item, callback)
+function source.resolve(_, completion_item, callback)
   local data = completion_item.data or {}
   if not data.stat or data.stat.type ~= "file" then
     -- return right away with no changes / no added docs
@@ -103,6 +102,7 @@ function source:resolve(completion_item, callback)
             contents = "« cannot read this file »",
           })
       end
+      ---@diagnostic disable-next-line: need-check-nil
       local first_kb = binary:read(1024)
       if first_kb == nil or first_kb == "" then
         ---@diagnostic disable-next-line: redundant-return-value
@@ -127,6 +127,7 @@ function source:resolve(completion_item, callback)
     --- deserialize doc and call callback(…)
     ---@param serialized_fileinfo string
     function(worker_error, serialized_fileinfo)
+      ---@diagnostic disable-next-line: unnecessary-if
       if worker_error then
         error(string.format("Worker error while fetching file doc: %s", worker_error))
       end
@@ -137,32 +138,37 @@ function source:resolve(completion_item, callback)
         error(string.format("Unexpected problem de-serializing item info: «%s»", serialized_fileinfo))
       end
       if file_info.kind == "binary" then
-        completion_item.documentation = {
-          kind = cmp.lsp.MarkupKind.PlainText,
+        ---@type lsp.MarkupKind
+        local documentation = {
+          kind = vim.lsp.protocol.MarkupKind.PlainText,
           value = file_info.contents,
         }
+        completion_item.documentation = documentation
       else
-        local contents = file_info.contents
+        ---@diagnostic disable-next-line: assign-type-mismatch
+        local contents = file_info.contents ---@type table
         local filetype = vim.filetype.match({ contents = contents })
         if not filetype then
           completion_item.documentation = {
-            kind = cmp.lsp.MarkupKind.PlainText,
+            kind = vim.lsp.protocol.MarkupKind.PlainText,
             value = table.concat(contents, "\n"),
           }
         else
           table.insert(contents, 1, "```" .. filetype)
           table.insert(contents, "```")
-          completion_item.documentation = {
-            kind = cmp.lsp.MarkupKind.Markdown,
+          ---@type lsp.MarkupKind
+          local documentation = {
+            kind = vim.lsp.protocol.MarkupKind.Markdown,
             value = table.concat(contents, "\n"),
           }
+          completion_item.documentation = documentation
         end
       end
 
       callback(completion_item)
     end
   )
-  work:queue(data.path, constants.max_lines or -1, cmp.lsp.MarkupKind.Markdown)
+  work:queue(data.path, constants.max_lines or -1, vim.lsp.protocol.MarkupKind.Markdown)
 end
 
 --- Try to match a path before cursor and return its dirname
@@ -228,7 +234,7 @@ end
 ---@param include_hidden boolean
 ---@param option cmp_path.Option
 ---@param callback function(err:nil|string, candidates:lsp.CompletionResponse|nil)
-function source:_candidates(dirname, include_hidden, option, callback)
+function source._candidates(_, dirname, include_hidden, option, callback)
   local entries, err = vim.uv.fs_scandir(dirname)
   if err then
     return callback(err, nil)
@@ -260,7 +266,7 @@ function source:_candidates(dirname, include_hidden, option, callback)
         if stat then
           fs_type = stat.type
         elseif fs_type == "link" then
-          ---@diagnostic disable-next-line: missing-parameter
+          ---@diagnostic disable-next-line: missing-parameter, param-type-mismatch
           lstat = vim.uv.fs_lstat(_dirname)
           if not lstat then
             -- Broken symlink
@@ -331,13 +337,13 @@ function source:_candidates(dirname, include_hidden, option, callback)
     include_hidden,
     option.label_trailing_slash,
     option.trailing_slash,
-    cmp.lsp.CompletionItemKind.File,
-    cmp.lsp.CompletionItemKind.Folder
+    vim.lsp.protocol.CompletionItemKind.File,
+    vim.lsp.protocol.CompletionItemKind.Folder
   )
 end
 
 --- using «/» as comment in current buffer?
-function source:_is_slash_comment_p()
+function source._is_slash_comment_p(_)
   local commentstring = vim.bo.commentstring or ""
   local no_filetype = vim.bo.filetype == ""
   local is_slash_comment = false
@@ -348,7 +354,7 @@ end
 
 ---@param params cmp.SourceCompletionApiParams
 ---@return cmp_path.Option
-function source:_validate_option(params)
+function source._validate_option(_, params)
   local option = assert(vim.tbl_deep_extend("keep", params.option, defaults))
   local validations = {
     trailing_slash = { option.trailing_slash, "boolean" },
@@ -363,6 +369,7 @@ function source:_validate_option(params)
       vim.validate(name, value, type)
     end
   else
+    ---@diagnostic disable-next-line: param-type-mismatch, missing-parameter
     vim.validate(validations)
   end
   return option
