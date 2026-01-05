@@ -21,6 +21,7 @@ local constants = { max_lines = 20 }
 ---@field public label_trailing_slash boolean
 ---@field public get_cwd fun(table): string
 ---@field public show_hidden_files_by_default boolean
+---@field public should_sort_by_mtime boolean
 
 ---@type cmp_path.Option
 local defaults = {
@@ -30,6 +31,7 @@ local defaults = {
     return vim.fn.expand(("#%d:p:h"):format(params.context.bufnr))
   end,
   show_hidden_files_by_default = false,
+  should_sort_by_mtime = false,
 }
 
 source.new = function()
@@ -249,10 +251,20 @@ function source._candidates(_, dirname, include_hidden, option, callback)
     ---@param _include_hidden boolean
     ---@param label_trailing_slash boolean
     ---@param trailing_slash boolean
+    ---@param should_sort_by_mtime boolean
     ---@param file_kind lsp.CompletionItemKind see cmp.lsp.CompletionItemKind.File
     ---@param folder_kind lsp.CompletionItemKind see cmp.lsp.CompletionItemKind.Folder
     ---@return string|nil, string (error, serialized_results) "error text", nil or nil, "serialized items"
-    function(_entries, _dirname, _include_hidden, label_trailing_slash, trailing_slash, file_kind, folder_kind)
+    function(
+      _entries,
+      _dirname,
+      _include_hidden,
+      label_trailing_slash,
+      trailing_slash,
+      should_sort_by_mtime,
+      file_kind,
+      folder_kind
+    )
       ---@type lsp.CompletionItem[]
       local items = {}
 
@@ -312,6 +324,14 @@ function source._candidates(_, dirname, include_hidden, option, callback)
         end
         create_item(name, fs_type)
       end
+      if should_sort_by_mtime then
+        local mtime = function(i)
+          return (i.data.stat or i.data.lstat).mtime.sec
+        end
+        table.sort(items, function(l, r)
+          return mtime(l) < mtime(r)
+        end)
+      end
 
       ---@diagnostic disable-next-line: redundant-return-value
       return nil, vim.json.encode(items)
@@ -341,6 +361,7 @@ function source._candidates(_, dirname, include_hidden, option, callback)
     include_hidden,
     option.label_trailing_slash,
     option.trailing_slash,
+    option.should_sort_by_mtime,
     vim.lsp.protocol.CompletionItemKind.File,
     vim.lsp.protocol.CompletionItemKind.Folder
   )
@@ -365,7 +386,7 @@ function source._validate_option(_, params)
     label_trailing_slash = { option.label_trailing_slash, "boolean" },
     get_cwd = { option.get_cwd, "function" },
     show_hidden_files_by_default = { option.show_hidden_files_by_default, "boolean" },
-    ---@diagnostic disable-next-line: missing-parameter
+    should_sort_by_mtime = { option.should_sort_by_mtime, "boolean" },
   }
   if vim.fn.has("nvim-0.11") == 1 then
     for name, t in pairs(validations) do
