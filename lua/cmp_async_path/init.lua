@@ -249,10 +249,11 @@ function source._candidates(_, dirname, include_hidden, option, callback)
     ---@param _include_hidden boolean
     ---@param label_trailing_slash boolean
     ---@param trailing_slash boolean
-    ---@param file_kind table<string,number> see cmp.lsp.CompletionItemKind.Filee
-    ---@param folder_kind table<string,number> see cmp.lsp.CompletionItemKind.Folder
+    ---@param file_kind lsp.CompletionItemKind see cmp.lsp.CompletionItemKind.File
+    ---@param folder_kind lsp.CompletionItemKind see cmp.lsp.CompletionItemKind.Folder
     ---@return string|nil, string (error, serialized_results) "error text", nil or nil, "serialized items"
     function(_entries, _dirname, _include_hidden, label_trailing_slash, trailing_slash, file_kind, folder_kind)
+      ---@type lsp.CompletionItem[]
       local items = {}
 
       local function create_item(name, fs_type)
@@ -276,6 +277,7 @@ function source._candidates(_, dirname, include_hidden, option, callback)
           return
         end
 
+        ---@type lsp.CompletionItem
         local item = {
           label = name,
           filterText = name,
@@ -323,6 +325,8 @@ function source._candidates(_, dirname, include_hidden, option, callback)
         callback(err, nil)
         return
       end
+      ---@diagnostic disable-next-line: assign-type-mismatch
+      ---@type boolean, lsp.CompletionItem[]
       local read_ok, items = pcall(vim.json.decode, serialized_items, { luanil = { object = true, array = true } })
       if not read_ok then
         callback("Problem de-serializing file entries", nil)
