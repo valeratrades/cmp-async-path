@@ -58,3 +58,41 @@ Specifies the base directory for relative paths.
 _Default:_ `false`
 
 Specify if hidden files should appear in the completion menu without the need of typing `.` first.
+
+### Order in completion
+
+You may want to sort the entries coming from this source. Personally, I like the latest entry (file or directory) at the top.
+
+To achieve this ordering, you can _append_ the following config
+
+```lua
+require'cmp'.setup {
+  -- the rest of the config
+  sorting = {
+    comparators = vim.list_extend({
+    ---@param l cmp.Entry
+    ---@param r cmp.Entry
+    ---@return boolean|nil
+    function(l, r)
+      --- Try to compare file/dir entries, give up and delegate if any entry isn't
+      ---@param i cmp.Entry
+      ---@return uv.fs_stat.result?
+      local function stat(i)
+        local d = i.completion_item.data or {}
+        return (d.stat or d.lstat) or nil
+      end
+      local ls = stat(l)
+      if not ls then
+        return nil
+      end
+      local lr = stat(r)
+      if not lr then
+        return nil
+      end
+      return lr.mtime.sec < ls.mtime.sec
+    end,
+    }, 
+    -- ↓ the rest of the default comparators
+    require "cmp.config.default"().sorting.comparators)
+  }
+}
