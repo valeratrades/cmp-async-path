@@ -27,7 +27,18 @@ local defaults = {
   trailing_slash = false,
   label_trailing_slash = true,
   get_cwd = function(params)
-    return vim.fn.expand(("#%d:p:h"):format(params.context.bufnr))
+    local bufnr = params.context.bufnr ---@type integer
+    local buffer_pathname = vim.api.nvim_buf_get_name(bufnr)
+    local basename = vim.fs.basename(buffer_pathname or "")
+    local dirname = vim.fn.expand(("#%d:p:h"):format(bufnr))
+    if
+      string.find(basename, "^zsh[a-zA-Z0-9][a-zA-Z0-9][a-zA-Z0-9][a-zA-Z0-9][a-zA-Z0-9][a-zA-Z0-9]$")
+      and string.find(dirname, "t[e]?mp")
+    then
+      -- invoked editor with ^x^e from zsh
+      return vim.uv.cwd()
+    end
+    return dirname
   end,
   show_hidden_files_by_default = false,
 }
