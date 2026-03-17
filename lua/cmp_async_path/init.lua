@@ -137,46 +137,50 @@ function source.resolve(_, completion_item, callback)
     end,
     --- deserialize doc and call callback(…)
     ---@param serialized_fileinfo string
+    --- Defer callback to normal event loop to avoid SIGABRT in vim.regex
+    --- when called from luv_after_work_cb context (neovim regex engine bug).
     function(worker_error, serialized_fileinfo)
-      ---@diagnostic disable-next-line: unnecessary-if
-      if worker_error then
-        error(string.format("Worker error while fetching file doc: %s", worker_error))
-      end
+      vim.schedule(function()
+        ---@diagnostic disable-next-line: unnecessary-if
+        if worker_error then
+          error(string.format("Worker error while fetching file doc: %s", worker_error))
+        end
 
-      local read_ok, file_info =
-        pcall(vim.json.decode, serialized_fileinfo, { luanil = { object = true, array = true } })
-      if not read_ok then
-        error(string.format("Unexpected problem de-serializing item info: «%s»", serialized_fileinfo))
-      end
-      if file_info.kind == "binary" then
-        ---@type lsp.MarkupKind
-        local documentation = {
-          kind = vim.lsp.protocol.MarkupKind.PlainText,
-          value = file_info.contents,
-        }
-        completion_item.documentation = documentation
-      else
-        ---@diagnostic disable-next-line: assign-type-mismatch
-        local contents = file_info.contents ---@type table
-        local filetype = vim.filetype.match({ contents = contents })
-        if not filetype then
-          completion_item.documentation = {
-            kind = vim.lsp.protocol.MarkupKind.PlainText,
-            value = table.concat(contents, "\n"),
-          }
-        else
-          table.insert(contents, 1, "```" .. filetype)
-          table.insert(contents, "```")
+        local read_ok, file_info =
+          pcall(vim.json.decode, serialized_fileinfo, { luanil = { object = true, array = true } })
+        if not read_ok then
+          error(string.format("Unexpected problem de-serializing item info: «%s»", serialized_fileinfo))
+        end
+        if file_info.kind == "binary" then
           ---@type lsp.MarkupKind
           local documentation = {
-            kind = vim.lsp.protocol.MarkupKind.Markdown,
-            value = table.concat(contents, "\n"),
+            kind = vim.lsp.protocol.MarkupKind.PlainText,
+            value = file_info.contents,
           }
           completion_item.documentation = documentation
+        else
+          ---@diagnostic disable-next-line: assign-type-mismatch
+          local contents = file_info.contents ---@type table
+          local filetype = vim.filetype.match({ contents = contents })
+          if not filetype then
+            completion_item.documentation = {
+              kind = vim.lsp.protocol.MarkupKind.PlainText,
+              value = table.concat(contents, "\n"),
+            }
+          else
+            table.insert(contents, 1, "```" .. filetype)
+            table.insert(contents, "```")
+            ---@type lsp.MarkupKind
+            local documentation = {
+              kind = vim.lsp.protocol.MarkupKind.Markdown,
+              value = table.concat(contents, "\n"),
+            }
+            completion_item.documentation = documentation
+          end
         end
-      end
 
-      callback(completion_item)
+        callback(completion_item)
+      end)
     end
   )
   work:queue(data.path, constants.max_lines or -1, vim.lsp.protocol.MarkupKind.Markdown)
@@ -331,18 +335,21 @@ function source._candidates(_, dirname, include_hidden, option, callback)
     --- This function is called in the main thread
     ---@param worker_error string|nil non-nil if some error happened in worker thread
     ---@param serialized_items string array-of-items serialized as string
+    --- Defer callback to normal event loop to avoid SIGABRT in vim.regex
+    --- when called from luv_after_work_cb context (neovim regex engine bug).
     function(worker_error, serialized_items)
       if worker_error then
-        callback(err, nil)
+        vim.schedule(function() callback(err, nil) end)
         return
       end
       ---@diagnostic disable-next-line: assign-type-mismatch
       ---@type boolean, lsp.CompletionItem[]
       local read_ok, items = pcall(vim.json.decode, serialized_items, { luanil = { object = true, array = true } })
       if not read_ok then
-        callback("Problem de-serializing file entries", nil)
+        vim.schedule(function() callback("Problem de-serializing file entries", nil) end)
+        return
       end
-      callback(nil, items)
+      vim.schedule(function() callback(nil, items) end)
     end
   )
 
